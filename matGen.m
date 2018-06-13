@@ -1,36 +1,29 @@
-function [A] = matGen(x,dx,E,z,dt,Type, d)
-Nx = length (x);
-A  = sparse (Nx,Nx);
-switch Type
-    case 'Dirichlet'
-        A(1,1) = 1;
-        for i=2:Nx-1
-            A(i,i-1) = -2./(dx(i-1)*(dx(i)+dx(i-1)));
-            A(i,i)   =  2./(dx(i-1)* dx(i));
-            A(i,i+1) = -2./(dx(i)  *(dx(i)+dx(i-1)));
-        end
-        A(Nx,Nx) = 1.;
-    case 'Neumann'
-        A(1,1) =  2.*d/dx(1)^2;
-        A(1,2) = -2.*d/dx(1)^2;
-        for i=2:Nx-1
-            A(i,i-1) = -2.*d/(dx(i-1)*(dx(i)+dx(i-1)));
-            A(i,i)   =  2.*d/(dx(i-1)* dx(i));
-            A(i,i+1) = -2.*d/(dx(i)  *(dx(i)+dx(i-1)));
-        end
-        A(Nx,Nx-1) = -2.*d/dx(Nx-1)^2;
-        A(Nx,Nx)   =  2.*d/dx(Nx-1)^2;
-        
-    case 'NP'
-        A(1,1) =  1./dt + 1.*d/(dx(1)^2);
-        A(1,2) = -1.*d/dx(1)^2;
-        for i=2:Nx-1
-            A(i,i-1) = -2.*d/(dx(i-1)*(dx(i)+dx(i-1)));
-            A(i,i)   =  1./dt + 2.*d/(dx(i-1)* dx(i));
-            A(i,i+1) = -2.*d/(dx(i)  *(dx(i)+dx(i-1)));
-        end
-        A(Nx,Nx-1) = -1.*d/dx(Nx-1)^2;
-        A(Nx,Nx)   =  1./dt + 1.*d/dx(Nx-1)^2;
-        
+function A = matGen(x, varargin)
+dx = diff(x);
+nx = length(x);
+
+if nargin < 2
+    bc = ["neumann", "neumann"];
+else
+    bc = string(lower(varargin{1}));
 end
+
+dxl = [dx(1) dx];
+dxr = [dx dx(end)];
+wl = -2./(dxl.*(dxl+dxr)); wl(1) = 0;
+wr = -2./(dxr.*(dxl+dxr)); wr(end) = 0;
+wc = -(wr+wl);
+
+if strcmp(bc(1), 'dirichlet')
+    wc(1) = 1;
+    wr(1) = 0;
+end
+
+if strcmp(bc(end), 'dirichlet')
+    wc(end) = 1;
+    wl(end) = 0;
+end
+
+A = spdiags([wr' wc' wl'], [-1 0 1], nx, nx)';
+
 end
