@@ -1,19 +1,12 @@
-function [x,dx] = gridGen(xmin, xmax, Nx, tau)
-xtemp = linspace(xmin,xmax,Nx);
-
-if (tau < 0 )
-    x = xtemp;
+function [x, dx] = gridGen(xmin, xmax, Nx, varargin)
+if (nargin < 4 )
+    x = linspace(xmin, xmax, Nx);
 else
-ztemp = linspace(-1,1,Nx);
-A = 2/(erf(tau) - erf(-tau));
-B = -1 - A*erf(-tau);
-zeta = A*erf(tau*ztemp) + B;
-zeta  = zeta*(xmax-xmin)/2;
-x  = zeta + xmin - zeta(1);
+    tau = varargin{1};
+    x = linspace(-1, 1, Nx);
+    A = 1/(erf(tau) - erf(-tau));
+    x = xmin + (xmax - xmin)*A*(erf(tau*x) - erf(-tau));
+end
 
-end
-dx = zeros(Nx-1,1);
-for i=1:Nx-1
-    dx(i) = x(i+1) - x(i);
-end
+dx = diff(x);
 end
