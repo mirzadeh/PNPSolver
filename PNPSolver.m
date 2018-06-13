@@ -4,7 +4,7 @@ dx = diff(x);
 xc = x(1:end-1) + 0.5*dx;
 sol.grid = struct('x', x, 'xc', xc, 'dx', dx);
 sol.options = struct('lambda', lambda, 'tf', tf, 'iter_max', 1, 'tol', 1e-6, ...
-    'dt', 0.5*lambda^2);
+    'dt', 0.05*lambda^2);
 
 nx = length(x);
 sol.cp  = 0.5*ones(nx-1,1);
@@ -49,9 +49,7 @@ while(t < tf)
     cm_n  = cm_tmp;
     psi_n = psi_tmp;
     fprintf(' ---------------- ********* ---------------- \n');
-    plot(xc, cm_n);
-    ylim([0, 1]);
-    pause(0.1);
+
     sol.cp  = cat(2, sol.cp, cp_n);
     sol.cm  = cat(2, sol.cm, cm_n);
     sol.psi = cat(2, sol.psi, psi_n);
