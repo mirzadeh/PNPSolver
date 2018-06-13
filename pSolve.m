@@ -1,18 +1,12 @@
-function [pn] = pSolve(x,dx,cp,cm,kappa,bcv)
-Nx = length(x);
-[y,dy]=MAC(x);
+function pn = pSolve(x,cp,cm,kappa,bc)
+% interpolate charge density on nodes
+rho = kappa^2*(cp-cm);
+A = matGen(x);
+f = -cell2node(x, rho);
 
-F = zeros(Nx,1);
-f = kappa*kappa*(cp-cm);
+% adjust boundary conditions
+f(1) = bc(1);
+f(end) = bc(end);
 
-
-for i=2:Nx-1
-    F(i) = inter(y(i-1),y(i),f(i-1),f(i),x(i));
-end
-
-
-A = matGen(x,dx,0,0,0,'Dirichlet', 1);
-G = vecGen(x,dx,bcv,F,'Dirichlet');
-
-pn = A\G;
+pn = A\f;
 end
