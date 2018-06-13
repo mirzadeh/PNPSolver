@@ -1,7 +1,7 @@
-function pn = pSolve(x,cp,cm,kappa,bc)
+function pn = pSolve(x, cp, cm, kappa, bc)
 % interpolate charge density on nodes
 rho = kappa^2*(cp-cm);
-A = matGen(x);
+A = matGen(x, 'dirichlet');
 f = -cell2node(x, rho);
 
 % adjust boundary conditions

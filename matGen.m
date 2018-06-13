@@ -8,8 +8,8 @@ else
     bc = string(lower(varargin{1}));
 end
 
-dxl = [dx(1) dx];
-dxr = [dx dx(end)];
+dxl = [dx(1); dx];
+dxr = [dx; dx(end)];
 wl = -2./(dxl.*(dxl+dxr)); wl(1) = 0;
 wr = -2./(dxr.*(dxl+dxr)); wr(end) = 0;
 wc = -(wr+wl);
@@ -24,6 +24,6 @@ if strcmp(bc(end), 'dirichlet')
     wl(end) = 0;
 end
 
-A = spdiags([wr' wc' wl'], [-1 0 1], nx, nx)';
+A = spdiags([wr wc wl], [-1 0 1], nx, nx)';
 
 end
