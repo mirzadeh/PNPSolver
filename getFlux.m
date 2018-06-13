@@ -1,4 +1,6 @@
-function f = getFlux(dx, c, psi, z, d, varargin)
+function f = getFlux(x, c, psi, d, z, varargin)
+dx = diff(x);
+
 if nargin < 6
     method = 'linear';
 else
