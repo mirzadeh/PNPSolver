@@ -1,11 +1,11 @@
-function sol = pb_dirichlet(v, delta, x)
+function sol = pb_dirichlet_half(v, delta, x)
     sol.runData.x = x;
     sol.runData.k = delta;
     sol.runData.v = v;
-    [sol.c0, sol.cp, sol.cm, sol.psi] = solve_nonlinear(x, v, delta);
+    [sol.y, sol.cp, sol.cm, sol.psi] = solve_nonlinear(x, v, delta);
 end
 
-function [c0, cp, cm, psi] = solve_nonlinear(x, v, delta)
+function [y, cp, cm, psi] = solve_nonlinear(x, v, delta)
     dx = diff(x);
     n = length(x);
     psi_old = zeros(n,1);
@@ -24,14 +24,12 @@ function [c0, cp, cm, psi] = solve_nonlinear(x, v, delta)
     end
     B(n,2) = 1;
 
-    c0 = 1;
     while err > tol
-        c0 = 2/trapz(x,exp(psi_old));
         diags = B;
-        diags(2:n-1,2) = B(2:n-1,2) + c0/delta^2*cosh(psi_old(2:n-1));
+        diags(2:n-1,2) = B(2:n-1,2) + 1/delta^2*cosh(psi_old(2:n-1));
                 
         A = spdiags(diags,[-1,0,1],n,n);                
-        rhs = c0/delta^2*(psi_old.*cosh(psi_old) - sinh(psi_old));
+        rhs = 1/delta^2*(psi_old.*cosh(psi_old) - sinh(psi_old));
         rhs(1) = -v; rhs(n) = v;
 
         psi_new = A \ rhs;        
@@ -48,6 +46,6 @@ function [c0, cp, cm, psi] = solve_nonlinear(x, v, delta)
         psi_y(i) = inter(x(i),x(i+1),psi(i),psi(i+1),y(i));
     end
 
-    cp = 0.5*c0*exp(-psi_y);
-    cm = 0.5*c0*exp( psi_y);    
+    cp = 0.5*exp(-psi_y);
+    cm = 0.5*exp( psi_y);    
 end

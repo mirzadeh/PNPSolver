@@ -1,4 +1,4 @@
-function sol = PNP(bcv, delta, beta, tf)
+function sol = PNP_cycle(bcv, delta, beta, tf)
 
 sol.runData.bcv       = bcv;
 sol.runData.delta     = delta;
@@ -24,11 +24,12 @@ Nx     = sol.runData.Nx;
 
 cp = 0.5*ones(Nx-1,1);
 cm = cp;
-psi = zeros(Nx,1);
 
-sol.cp = cp;
-sol.cm = cm;
-sol.psi = psi;
+% sol.cp  = cp;
+% sol.cm  = cm;
+
+psi = zeros(Nx,1);
+% sol.psi = psi;
 
 sol.t = 0;
 sol.x = x;
@@ -38,8 +39,16 @@ sol.Sigma = 0;
 t   = 0;
 tc  = 0;
 dt = dt1;
+bc_changed = 0;
+s = 1;
 
-while(t<sol.runData.tf)
+while(t<sol.runData.tf && t >= 0)
+    if t > sol.runData.tf-2*dt && ~bc_changed
+        bcv = [0 0];
+        dt = dt1;
+        bc_changed = 1;
+        s = -1;
+    end
     
     iter = 1;
     err_iter = 1;
@@ -68,22 +77,16 @@ while(t<sol.runData.tf)
     cp = cp_n;
     cm = cm_n;
             
-    tc = tc + 1; t = t + dt;
+    tc = tc + 1; t = t + s*dt;
     
     q = nint(x, dx, [-1,0], cp-cm);
     
-    sol.cp  = cat(2, sol.cp, cp);
-    sol.cm  = cat(2, sol.cm, cm);
-    sol.psi = cat(2, sol.psi, psi);
-
+%     sol.cp  = cat(2, sol.cp, cp);
+%     sol.cm  = cat(2, sol.cm, cm);
+%     sol.psi = cat(2, sol.psi, psi);
     sol.t   = cat(2, sol.t, t);
     sol.q   = cat(2, sol.q, q);
     
     sol.Sigma = cat(2, sol.Sigma, -nint(x,dx, [sol.runData.xmin 0], (cp-cm))*delta);
-    
-%     figure(1);    
-%     plot(y, cp); hold on; ylim([0.4, 0.6]);
-%     plot(y, cm); hold off; ylim([0.4, 0.6]);
-%     pause(0.01);
 end
 end

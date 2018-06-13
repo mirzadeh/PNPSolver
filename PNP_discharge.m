@@ -1,6 +1,6 @@
-function sol = PNP(bcv, delta, beta, tf)
+function sol = PNP_discharge(init, delta, beta, tf)
 
-sol.runData.bcv       = bcv;
+sol.runData.init      = init;
 sol.runData.delta     = delta;
 sol.runData.beta      = beta;
 sol.runData.tf        = tf;
@@ -11,7 +11,6 @@ sol.runData.xmin      = -1;
 sol.runData.xmax      =  1;
 sol.runData.Nx        = 200;
 sol.runData.taux      = 2;
-sol.q=0;
 
 dt = sol.runData.dt_factor*delta^2;
 dt1 = dt;
@@ -19,12 +18,11 @@ iter_max = sol.runData.iter_max;
 tol_iter = sol.runData.tol_iter;
 
 [x,dx] = gridGen(sol.runData.xmin, sol.runData.xmax, sol.runData.Nx, sol.runData.taux);
-Nx     = sol.runData.Nx;
 [y,~]  = MAC(x);
 
-cp = 0.5*ones(Nx-1,1);
-cm = cp;
-psi = zeros(Nx,1);
+psi = init.psi;
+cp = init.cp;
+cm = init.cm;
 
 sol.cp = cp;
 sol.cm = cm;
@@ -38,6 +36,11 @@ sol.Sigma = 0;
 t   = 0;
 tc  = 0;
 dt = dt1;
+
+bcv = [0 0];
+sol.q = nint(x, dx, [-1,0], cp-cm);
+
+sol.frames.q(1000) = struct('cdata',[],'colormap',[]);
 
 while(t<sol.runData.tf)
     
@@ -80,10 +83,6 @@ while(t<sol.runData.tf)
     sol.q   = cat(2, sol.q, q);
     
     sol.Sigma = cat(2, sol.Sigma, -nint(x,dx, [sol.runData.xmin 0], (cp-cm))*delta);
-    
-%     figure(1);    
-%     plot(y, cp); hold on; ylim([0.4, 0.6]);
-%     plot(y, cm); hold off; ylim([0.4, 0.6]);
-%     pause(0.01);
+
 end
 end
