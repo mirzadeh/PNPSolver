@@ -6,21 +6,20 @@ sol.options = struct('lambda', lambda, 'tf', tf, 'v', v, ...
     'iter_max', 5, 'tol', 1e-6, 'dtmax', 0.5*lambda^2);
 
 nx = length(x);
-sol.cp  = 0.5*ones(nx-1,1);
-sol.cm  = 0.5*ones(nx-1,1);
-sol.psi = linspace(-v, v, nx)';
+cp_n  = 0.5*ones(nx-1,1);
+cm_n  = 0.5*ones(nx-1,1);
+psi_n = linspace(-v, v, nx)';
 
-sol.q = [];
-sol.t = [];
+sol.q = 0;
+sol.t = 0;
+sol.cp = cp_n;
+sol.cm = cm_n;
+sol.psi = psi_n;
 
 t   = 0;
 tc  = 0;
-
-cp_n  = sol.cp;
-cm_n  = sol.cm;
-psi_n = sol.psi;
-
 dt = min(0.5*min(dx), sol.options.dtmax);
+
 while(t < tf)    
     iter = 1;
     err = 1;
@@ -55,11 +54,12 @@ while(t < tf)
     sol.cp  = cat(2, sol.cp, cp_n);
     sol.cm  = cat(2, sol.cm, cm_n);
     sol.psi = cat(2, sol.psi, psi_n);
-
-    sol.t   = cat(1, sol.t, t);
-    sol.q   = cat(1, sol.q, integrate(x, cp_n - cm_n));
+    
+    mid = floor(nx/2);
+    sol.q   = cat(1, sol.q, integrate(x(1:mid+1), cp_n(1:mid) - cm_n(1:mid)));
     
     dt = min(1.02*dt, sol.options.dtmax);
     tc = tc + 1; t = t + dt;    
+    sol.t = cat(1, sol.t, t);
 end
 end
