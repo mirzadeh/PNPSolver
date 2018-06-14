@@ -63,3 +63,37 @@ while(t < tf)
     sol.t = cat(1, sol.t, t);
 end
 end
+
+function pn = pSolve(x, cp, cm, kappa, bc)
+% interpolate charge density on nodes
+f = cell2node(x, kappa^2*(cp-cm));
+
+% adjust boundary conditions
+f(1) = bc(1);
+f(end) = bc(end);
+
+pn = matGen(x) \ f;
+end
+
+function cn = cSolve(x, dt, psi, c, cn, z, bc)
+dx = diff(x);
+f = getFlux(x, c, psi, z, 'linear');
+f(1) = bc(1); f(end) = bc(end);
+F = cn/dt - diff(f) ./ dx;
+
+% note: we are solving c on cell centers
+xc = x(1:end-1) + 0.5*dx;
+A = 1/dt*speye(length(xc)) + matGen(x, 'cell');
+cn = A \ F;
+end
+
+function f = getFlux(x, c, psi, z, varargin)
+if nargin < 5
+    method = 'linear';
+else
+    method = lower(varargin{1});
+end
+
+e = -grad(x, psi);
+f = z*e.*cell2node(x, c, method);
+end
