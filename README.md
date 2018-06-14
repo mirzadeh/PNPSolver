@@ -1,3 +1,4 @@
+![](figures/cover.png)
 This is a simple PNPSolver based on hybrid FD/FV formulation.
 
 * PNPSolver: Solves PNP equation between two blocking electrodes.
