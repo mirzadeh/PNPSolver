@@ -16,3 +16,4 @@ switch method
         fc(isinf(fc)) = 0;
         fc = 1./fc;
 end
+end

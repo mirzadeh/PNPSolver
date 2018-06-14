@@ -6,5 +6,5 @@ f = cell2node(x, kappa^2*(cp-cm));
 f(1) = bc(1);
 f(end) = bc(end);
 
-pn = matGen(x, 'dirichlet') \ f;
+pn = matGen(x) \ f;
 end

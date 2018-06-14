@@ -4,13 +4,9 @@ f = getFlux(x, c, psi, z, 'linear');
 f(1) = bc(1); f(end) = bc(end);
 F = cn/dt - diff(f) ./ dx;
 
-% apply flux boundary conditions
-% F(1) = F(1) + bc(1)/dx(1);
-% F(end) = F(end) - bc(end)/dx(end);
-
 % note: we are solving c on cell centers
-xc = x(1:end-1) + 0.5*diff(x);
-A = 1/dt*speye(length(xc)) + matGen(xc);
+xc = x(1:end-1) + 0.5*dx;
+A = 1/dt*speye(length(xc)) + matGen(x, 'cell');
 cn = A \ F;
 
 end

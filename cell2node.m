@@ -16,3 +16,4 @@ switch method
         fn(isinf(fn)) = 0;
         fn = 1./fn;
 end
+end
