@@ -1,10 +1,9 @@
 function sol = PNPSolver(x, lambda, tf)
-
 dx = diff(x);
 xc = x(1:end-1) + 0.5*dx;
 sol.grid = struct('x', x, 'xc', xc, 'dx', dx);
 sol.options = struct('lambda', lambda, 'tf', tf, 'iter_max', 1, 'tol', 1e-6, ...
-    'dt', 0.05*lambda^2);
+    'dtmax', 0.5*lambda^2);
 
 nx = length(x);
 sol.cp  = 0.5*ones(nx-1,1);
@@ -14,7 +13,6 @@ sol.psi = zeros(nx,1);
 sol.q = [];
 sol.t = [];
 
-dt  = sol.options.dt;
 t   = 0;
 tc  = 0;
 
@@ -22,6 +20,7 @@ cp_n  = sol.cp;
 cm_n  = sol.cm;
 psi_n = sol.psi;
 
+dt = min(min(dx), sol.options.dtmax);
 while(t < tf)    
     iter = 1;
     err = 1;
@@ -57,6 +56,7 @@ while(t < tf)
     sol.t   = cat(1, sol.t, t);
     sol.q   = cat(1, sol.q, integrate(x, cp_n - cm_n));
     
+    dt = min(1.02*dt, sol.options.dtmax);
     tc = tc + 1; t = t + dt;    
 end
 end

@@ -1,4 +1,4 @@
-function du = grad(u, x, varargin)
+function du = grad(x, u, varargin)
 dx = diff(x);
 if nargin < 3
     type = 'node';

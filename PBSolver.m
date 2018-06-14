@@ -10,7 +10,6 @@ while err > sol.options.tol
     rhs = 1/lambda^2*(sol.psi.*cosh(sol.psi) - sinh(sol.psi));
     rhs(1) = bc(1); rhs(end) = bc(end);
     
-    
     D = 1/lambda^2 * sparse(diag(cosh(sol.psi)));
     D(1) = 0; D(end) = 0;
     psi_new = (A + D) \ rhs;
