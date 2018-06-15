@@ -4,7 +4,7 @@ dx = diff(x);
 if nargin < 2
     type = 'node';
 else
-    type = 'cell';
+    type = lower(varargin{1});
 end
 
 switch type
