@@ -7,17 +7,17 @@ xc.r = x.r(1:end-1) + 0.5*dx.r;
 
 sol.grid = struct('xl', x.l, 'xr', x.r, 'xcl', xc.l, 'xcr', xc.r, 'dxl', dx.l, 'dxr', dx.r);
 sol.options = struct('lambda', lambda, 'tf', tf, 'v', v, 'G', G, ...
-    'lambda_m', lambda_m, 'iter_max', 5, 'tol', 1e-6, 'dtmax', 0.5*lambda^2);
+    'lambda_m', lambda_m, 'iter_max', 5, 'tol', 1e-6, 'dtmax', 0.5*lambda^2/max(G,1));
 
 nl = length(x.l);
 cp_n.l  = 0.5*ones(nl-1,1);
 cm_n.l  = 0.5*ones(nl-1,1);
-psi_n.l = linspace(-v, v, nl)';
+psi_n.l = linspace(-v, 0, nl)';
 
 nr = length(x.r);
 cp_n.r  = 0.5*ones(nr-1,1);
 cm_n.r  = 0.5*ones(nr-1,1);
-psi_n.r = linspace(-v, v, nr)';
+psi_n.r = linspace(0, v, nr)';
 
 sol.t = 0;
 sol.cp.l = cp_n.l;
@@ -26,7 +26,6 @@ sol.psi.l = psi_n.l;
 sol.cp.r = cp_n.r;
 sol.cm.r = cm_n.r;
 sol.psi.r = psi_n.r;
-
 
 t   = 0;
 tc  = 0;
@@ -46,13 +45,13 @@ while(t < tf)
         cm_new  = cSolve(x, dt, psi_tmp, cm_tmp, cm_n, -1, G);                
         psi_new = pSolve(x, cp_tmp, cm_tmp, 1/lambda, lambda_m, [-v v]);
 
-        d_cp.l  = integrate(x.l, (cp_new.l  - cp_tmp.l).^2); 
-        d_cm.l  = integrate(x.l, (cm_new.l  - cm_tmp.l).^2); 
-        d_psi.l = integrate(x.l, (psi_new.l - psi_tmp.l).^2, 'node');
+        d_cp.l  = sqrt(integrate(x.l, (cp_new.l  - cp_tmp.l).^2)); 
+        d_cm.l  = sqrt(integrate(x.l, (cm_new.l  - cm_tmp.l).^2)); 
+        d_psi.l = sqrt(integrate(x.l, (psi_new.l - psi_tmp.l).^2, 'node'));
         
-        d_cp.r  = integrate(x.r, (cp_new.r  - cp_tmp.r).^2); 
-        d_cm.r  = integrate(x.r, (cm_new.r  - cm_tmp.r).^2); 
-        d_psi.r = integrate(x.r, (psi_new.r - psi_tmp.r).^2, 'node');
+        d_cp.r  = sqrt(integrate(x.r, (cp_new.r  - cp_tmp.r).^2)); 
+        d_cm.r  = sqrt(integrate(x.r, (cm_new.r  - cm_tmp.r).^2)); 
+        d_psi.r = sqrt(integrate(x.r, (psi_new.r - psi_tmp.r).^2, 'node'));
         
         iter = iter + 1;
         err = max([d_cp.l d_cp.r d_cm.l d_cm.r d_psi.l d_psi.r]);
@@ -134,7 +133,11 @@ function cn = cSolve(x, dt, psi, c, cn, z, G)
     % compute jmem -- only selective to cations.
     switch z
         case 1
-            jmem = -G*(log(c.r(1)/c.l(end)) + (psi.r(1) - psi.l(end)));
+            xcl = x.l(1:end-1) + 0.5*diff(x.l);
+            xcr = x.r(1:end-1) + 0.5*diff(x.r);
+            cl = interp1(xcl, c.l, 0, 'linear', 'extrap');
+            cr = interp1(xcr, c.r, 0, 'linear', 'extrap');
+            jmem = -G*(log(cr/cl) + (psi.r(1) - psi.l(end)));
         case -1
             jmem = 0;
     end
@@ -142,10 +145,15 @@ function cn = cSolve(x, dt, psi, c, cn, z, G)
     % solve on either side using jmem as boundary condition
     cn.l = solveOneSide(x.l, dt, psi.l, c.l, cn.l, z, [0 jmem]);
     cn.r = solveOneSide(x.r, dt, psi.r, c.r, cn.r, z, [jmem 0]);
-
+    
+    % BAD IDEA; instead use a better time integrator!
+    if any(cn.l <= 0) || any(cn.r <= 0)
+        error('Negative concentration -- try reducing dt');
+    end
+    
     function cn = solveOneSide(x, dt, psi, c, cn, z, bc)
         dx = diff(x);
-        f = getFlux(x, c, psi, z, 'linear');
+        f = getFlux(x, c, psi, z, 'harmonic');
         f(1) = bc(1); f(end) = bc(end);
         F = cn/dt - diff(f) ./ dx;
 
