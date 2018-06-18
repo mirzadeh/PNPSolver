@@ -60,7 +60,7 @@ while(t < tf)
         cp_tmp = cp_new;
         cm_tmp = cm_new;
         psi_tmp = psi_new;
-        fprintf(' iter = %2d \t err = %e\n', iter, err);
+        fprintf(' iter = %2d \t err = %e\n', iter, err);        
     end
     cp_n  = cp_tmp;
     cm_n  = cm_tmp;
@@ -86,8 +86,13 @@ function pn = pSolve(x, cp, cm, kappa, lambda_m, bc)
 % individual blocks separately
 %
 % A = [Al Alr; Arl Ar]
-% left  equation: p_r - p_l = lambda_m * (p_l - p_{l-1})/dxl
-% right equation: p_r - p_l = lambda_m * (p_{r+1} - p_r)/dxr
+% left  equation: p_r - p_l = lambda_m * (p_l - p_{l-1})/dxl (1)
+% right equation: p_r - p_l = lambda_m * (p_{r+1} - p_r)/dxr (2)
+% 
+% NOTE: When lambda_m = 0 these equations are the same and therefore the
+% matrix become singular. To avoid this, we instead replace right equation
+% (2) with the continuity of dispalcement field
+% right: (p_l - p_{l-1})/dxl = (p_{r+1} - p_r)/dxr (2')
 nl = length(x.l);
 nr = length(x.r);
 dxl = x.l(end) - x.l(end-1);
@@ -95,17 +100,19 @@ dxr = x.r(2) - x.r(1);
 
 Al = matGen(x.l);
 Ar = matGen(x.r);
-
-Al(nl, nl-1) = lambda_m/dxl;
-Al(nl, nl) = -1 - lambda_m/dxl;
-Ar(1, 1) = 1 + lambda_m/dxr;
-Ar(1, 2) = -lambda_m/dxr;
-
-% include the off-diagonal terms
 Al_off = sparse(nl, nr);
 Ar_off = sparse(nr, nl);
-Al_off(nl, 1) =  1;
-Ar_off(1, nr) = -1;
+
+% imposing equation (1)
+Al(nl, nl-1) = lambda_m/dxl;
+Al(nl, nl) = -1 - lambda_m/dxl;
+Al_off(nl, 1) = 1;
+
+% imposing equation (2')
+Ar_off(1, nl) = 1/dxl;
+Ar_off(1, nl-1) = -1/dxl;
+Ar(1, 1) = 1/dxr;
+Ar(1, 2) = -1/dxr;
 
 A = [[Al Al_off]; [Ar_off Ar]]; 
 
@@ -114,8 +121,8 @@ f.l = cell2node(x.l, kappa^2*(cp.l - cm.l));
 f.r = cell2node(x.r, kappa^2*(cp.r - cm.r));
 
 % adjust boundary conditions
-f.l(1) = bc(1);
-f.r(end) = bc(end);
+f.l(1) = bc(1); f.l(end) = 0;
+f.r(end) = bc(end); f.r(1) = 0;
 
 sol = A \ [f.l; f.r];
 
