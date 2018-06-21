@@ -14,7 +14,7 @@ function sol = PNPTimeIntegrator(x, lambda, v, tf)
     mass = [[speye(nx-1) sparse(nx-1, nx-1) sparse(nx-1, nx)]; ...
         [sparse(nx-1, nx-1) speye(nx-1) sparse(nx-1, nx)]; ...
         [sparse(nx, nx-1) sparse(nx, nx-1) sparse(nx, nx)]];
-    opt = odeset('Mass', mass);
+    opt = odeset('Mass', mass, 'AbsTol', 1e-7, 'RelTol', 1e-4);
     pnp = ode15s(@(t, y) PNPSystem(t, y, sol.grid, sol.options), [0 tf], pnp0, opt);
     
     sol.t   = pnp.x;
@@ -31,14 +31,14 @@ function dpnp = PNPSystem(~, pnp, grid, options)
     
     e = -grad(grid.x, psi);
     
-    fp  = getFlux(grid, cp, e,  1);
-    fm  = getFlux(grid, cm, e, -1);
+    fp  = getFlux(grid, cp, e,  1, 'linear');
+    fm  = getFlux(grid, cm, e, -1, 'linear');
     
     dcp  = -diff(fp)./grid.dx;
     dcm  = -diff(fm)./grid.dx;
-    rho  = cell2node(grid.x, cp - cm);
+    rho  = options.lambda^(-2)*cell2node(grid.x, cp - cm);
     lap  = diff(diff(psi)./grid.dx)./diff(grid.xc);
-    dpsi = [psi(1) + options.v; lap + options.lambda^(-2)*rho(2:end-1); psi(end) - options.v];
+    dpsi = [psi(1) + options.v; lap + rho(2:end-1); psi(end) - options.v];
     
     dpnp = [dcp; dcm; dpsi];
 end
