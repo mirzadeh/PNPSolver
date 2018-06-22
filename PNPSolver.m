@@ -1,99 +1,96 @@
-function sol = PNPSolver(x, lambda, v, tf)
-dx = diff(x);
-xc = x(1:end-1) + 0.5*dx;
-sol.grid = struct('x', x, 'xc', xc, 'dx', dx);
-sol.options = struct('lambda', lambda, 'tf', tf, 'v', v, ...
-    'iter_max', 5, 'tol', 1e-6, 'dtmax', 0.5*lambda^2);
-
-nx = length(x);
-cp_n  = 0.5*ones(nx-1,1);
-cm_n  = 0.5*ones(nx-1,1);
-psi_n = linspace(-v, v, nx)';
-
-sol.q = 0;
-sol.t = 0;
-sol.cp = cp_n;
-sol.cm = cm_n;
-sol.psi = psi_n;
-
-t   = 0;
-tc  = 0;
-dt = min(0.5*min(dx), sol.options.dtmax);
-
-while(t < tf)    
-    iter = 1;
-    err = 1;
+function sol = PNPSolver(x, options, varargin)
+    sol.options = options;
     
-    fprintf(' ---------------- Iteration ---------------- \n');
-    fprintf(' t = %f \t time-step = %d\n\n', t, tc);
-    cp_tmp  = cp_n;
-    cm_tmp  = cm_n;
-    psi_tmp = psi_n;
-    while (iter <= sol.options.iter_max && err > sol.options.tol)        
-        cp_new  = cSolve(x, dt, psi_tmp, cp_tmp, cp_n,  1, [0 0]);
-        cm_new  = cSolve(x, dt, psi_tmp, cm_tmp, cm_n, -1, [0 0]);                
-        psi_new = pSolve(x, cp_tmp, cm_tmp, 1/lambda, [-v v]);
-
-        d_cp  = integrate(x, (cp_new  - cp_tmp).^2); 
-        d_cm  = integrate(x, (cm_new  - cm_tmp).^2); 
-        d_psi = integrate(x, (psi_new - psi_tmp).^2, 'node');
-        
-        iter = iter + 1;
-        err = max(d_cp, max(d_cm, d_psi));
-        
-        cp_tmp = cp_new;
-        cm_tmp = cm_new;
-        psi_tmp = psi_new;
-        fprintf(' iter = %2d \t err = %e\n',iter,err);
+    % default to binary symmetric electrolyte if no ions are supplied
+    if nargin < 3
+        ions{1} = struct('z',  1, 'c0', 0.5, 'd', 1);
+        ions{2} = struct('z', -1, 'c0', 0.5, 'd', 1);
+    else
+        ions = varargin{1};
     end
-    cp_n  = cp_tmp;
-    cm_n  = cm_tmp;
-    psi_n = psi_tmp;
-    fprintf(' ---------------- ********* ---------------- \n');
+    sol.ions = ions;
 
-    sol.cp  = cat(2, sol.cp, cp_n);
-    sol.cm  = cat(2, sol.cm, cm_n);
-    sol.psi = cat(2, sol.psi, psi_n);
+    % prepare the grid
+    dx = diff(x);
+    xc = x(1:end-1) + 0.5*dx;
+    sol.grid = struct('x', x, 'xc', xc, 'dx', dx);
+        
+    % compute the initial conditions
+    nx = length(x);
+    y0 = zeros(length(ions)*(nx-1) + nx, 1);
     
-    mid = floor(nx/2);
-    sol.q   = cat(1, sol.q, integrate(x(1:mid+1), cp_n(1:mid) - cm_n(1:mid)));
+    for i = 1:length(ions)
+        y0(1 + (i-1)*(nx-1) : i*(nx-1)) = ions{i}.c0*ones(nx-1, 1);
+    end
+    y0(end-nx+1:end) = options.v*linspace(-1, 1, nx)';
     
-    dt = min(1.02*dt, sol.options.dtmax);
-    tc = tc + 1; t = t + dt;    
-    sol.t = cat(1, sol.t, t);
-end
-end
-
-function pn = pSolve(x, cp, cm, kappa, bc)
-% interpolate charge density on nodes
-f = cell2node(x, kappa^2*(cp-cm));
-
-% adjust boundary conditions
-f(1) = bc(1);
-f(end) = bc(end);
-
-pn = matGen(x) \ f;
-end
-
-function cn = cSolve(x, dt, psi, c, cn, z, bc)
-dx = diff(x);
-f = getFlux(x, c, psi, z, 'linear');
-f(1) = bc(1); f(end) = bc(end);
-F = cn/dt - diff(f) ./ dx;
-
-% note: we are solving c on cell centers
-xc = x(1:end-1) + 0.5*dx;
-A = 1/dt*speye(length(xc)) + matGen(x, 'cell');
-cn = A \ F;
+    % integrate the PNP equations -- note that the PNP equations is a index-1
+    % DAE since the Poisson eqution does not involve time derivatives.
+    % Therefore we need to define the mass matrix
+    dofs = length(ions)*(nx-1) + nx;
+    diag = ones(dofs, 1);
+    diag(end-nx+1:end) = 0;
+    mass = spdiags(diag, 0, dofs, dofs);
+    opt = odeset('Mass', mass, 'OutputFcn', @PNPPrint);
+    pnp = ode15s(@(t, y) PNPSystem(t, y, sol.grid, options, ions), [0 options.tf], y0, opt);
+    
+    % extract solutions
+    sol.grid.t = pnp.x';
+    for i = 1:length(ions)
+        sol.ions{i}.c = pnp.y(1 + (i-1)*(nx-1):i*(nx-1), :);
+    end
+    sol.psi = pnp.y(end-nx+1:end, :);
 end
 
-function f = getFlux(x, c, psi, z, varargin)
-if nargin < 5
-    method = 'linear';
-else
-    method = lower(varargin{1});
+function dpnp = PNPSystem(~, pnp, grid, options, ions)
+    % Compute the residual of the PNP equations. This is the fully implicit
+    % formulation. We store everything in a single vector which includes all
+    % ionic concentrations followed by the potential
+    nx = length(grid.x);
+    dc = zeros(nx-1, length(ions));
+    zs = zeros(1, length(ions));
+    
+    psi = pnp(end-nx+1:end);    
+    c = reshape(pnp(1:end-nx), nx-1, length(ions));
+    
+    e = -grad(grid.x, psi);
+    
+    for i = 1:length(ions)
+        zs(i) = ions{i}.z;
+        f = getFlux(grid, c(:,i), e, ions{i}, 'linear');
+        f(1) = 0; f(end) = 0;
+        
+        dc(:, i) = -diff(f) ./ grid.dx;
+    end    
+        
+    % Poisson equation -- Note we impose constant potential boundary conditions
+    rho  = options.lambda^(-2)*cell2node(grid.x, sum(zs.*c, 2));
+    dpsi = laplace(grid.x, psi) + rho;
+    dpsi([1, end]) = [psi(1) + options.v; psi(end) - options.v];
+    
+    % pack everything
+    dpnp = [reshape(dc, [], 1); dpsi];
+    
+    function f = getFlux(grid, c, e, ion, varargin)
+        if nargin < 5
+            method = 'linear';
+        else
+            method = lower(varargin{1});
+        end
+        
+        fd = -grad(grid.x, c, 'cell');
+        fe = ion.z*e.*cell2node(grid.x, c, method);
+        f = ion.d*(fd + fe);
+    end
 end
 
-e = -grad(x, psi);
-f = z*e.*cell2node(x, c, method);
+function status = PNPPrint(t, ~, flag)
+    % a print function to be called after each step of ode solver 
+    switch flag
+        case 'done'
+            fprintf('\n');
+        otherwise
+            fprintf('t = %f\n', t(1));
+    end
+    status = 0;
 end
