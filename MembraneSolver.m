@@ -1,177 +1,137 @@
-function sol = MembraneSolver(x, v, G, lambda, lambda_m, tf)
-dx.l = diff(x.l);
-xc.l = x.l(1:end-1) + 0.5*dx.l;
-
-dx.r = diff(x.r);
-xc.r = x.r(1:end-1) + 0.5*dx.r;
-
-sol.grid = struct('xl', x.l, 'xr', x.r, 'xcl', xc.l, 'xcr', xc.r, 'dxl', dx.l, 'dxr', dx.r);
-sol.options = struct('lambda', lambda, 'tf', tf, 'v', v, 'G', G, ...
-    'lambda_m', lambda_m, 'iter_max', 5, 'tol', 1e-6, 'dtmax', 0.5*lambda^2/max(G,1));
-
-nl = length(x.l);
-cp_n.l  = 0.5*ones(nl-1,1);
-cm_n.l  = 0.5*ones(nl-1,1);
-psi_n.l = linspace(-v, 0, nl)';
-
-nr = length(x.r);
-cp_n.r  = 0.5*ones(nr-1,1);
-cm_n.r  = 0.5*ones(nr-1,1);
-psi_n.r = linspace(0, v, nr)';
-
-sol.t = 0;
-sol.cp.l = cp_n.l;
-sol.cm.l = cm_n.l;
-sol.psi.l = psi_n.l;
-sol.cp.r = cp_n.r;
-sol.cm.r = cm_n.r;
-sol.psi.r = psi_n.r;
-
-t   = 0;
-tc  = 0;
-dt = min(0.5*min([sol.grid.dxl; sol.grid.dxr]), sol.options.dtmax);
-
-while(t < tf)
-    iter = 1;
-    err = 1;
+function sol = MembraneSolver(x, options, ions)
+    sol.options = options;
     
-    fprintf(' ---------------- Iteration ---------------- \n');
-    fprintf(' t = %f \t time-step = %d\n\n', t, tc);
-    cp_tmp  = cp_n;
-    cm_tmp  = cm_n;
-    psi_tmp = psi_n;
-    while (err > sol.options.tol && iter <= sol.options.iter_max)
-        cp_new  = cSolve(x, dt, psi_tmp, cp_tmp, cp_n,  1, G);
-        cm_new  = cSolve(x, dt, psi_tmp, cm_tmp, cm_n, -1, G);
-        psi_new = pSolve(x, cp_tmp, cm_tmp, 1/lambda, lambda_m, [-v v]);
-        
-        d_cp.l  = sqrt(integrate(x.l, (cp_new.l  - cp_tmp.l).^2));
-        d_cm.l  = sqrt(integrate(x.l, (cm_new.l  - cm_tmp.l).^2));
-        d_psi.l = sqrt(integrate(x.l, (psi_new.l - psi_tmp.l).^2, 'node'));
-        
-        d_cp.r  = sqrt(integrate(x.r, (cp_new.r  - cp_tmp.r).^2));
-        d_cm.r  = sqrt(integrate(x.r, (cm_new.r  - cm_tmp.r).^2));
-        d_psi.r = sqrt(integrate(x.r, (psi_new.r - psi_tmp.r).^2, 'node'));
-        
-        err = max([d_cp.l d_cp.r d_cm.l d_cm.r d_psi.l d_psi.r]);
-        fprintf(' iter = %2d \t err = %e\n', iter, err);
-        
-        cp_tmp = cp_new;
-        cm_tmp = cm_new;
-        psi_tmp = psi_new;
-        
-        iter = iter + 1;
+    % default to binary symmetric electrolyte if no ions are supplied
+    if nargin < 3
+        ions{1} = struct('z',  1, 'c0', 0.5, 'd', 1, 'G', 1);
+        ions{2} = struct('z', -1, 'c0', 0.5, 'd', 1, 'G', 0);
     end
-    cp_n  = cp_tmp;
-    cm_n  = cm_tmp;
-    psi_n = psi_tmp;
-    fprintf(' ---------------- ********* ---------------- \n');
-    
-    sol.cp.l  = cat(2, sol.cp.l, cp_n.l);
-    sol.cm.l  = cat(2, sol.cm.l, cm_n.l);
-    sol.psi.l = cat(2, sol.psi.l, psi_n.l);
-    
-    sol.cp.r  = cat(2, sol.cp.r, cp_n.r);
-    sol.cm.r  = cat(2, sol.cm.r, cm_n.r);
-    sol.psi.r = cat(2, sol.psi.r, psi_n.r);
-    
-    dt = min(1.02*dt, sol.options.dtmax);
-    tc = tc + 1; t = t + dt;
-    sol.t = cat(1, sol.t, t);
-end
-end
+    sol.ions = ions;
 
-function pn = pSolve(x, cp, cm, kappa, lambda_m, bc)
-% since we are solving the Poisson equation using jump, we need to construct
-% individual blocks separately
-%
-% A = [Al Alr; Arl Ar]
-% left  equation: p_r - p_l = lambda_m * (p_l - p_{l-1})/dxl (1)
-% right equation: p_r - p_l = lambda_m * (p_{r+1} - p_r)/dxr (2)
-%
-% NOTE: When lambda_m = 0 these equations are the same and therefore the
-% matrix become singular. To avoid this, we instead replace right equation
-% (2) with the continuity of dispalcement field
-% right: (p_l - p_{l-1})/dxl = (p_{r+1} - p_r)/dxr (2')
-nl = length(x.l);
-nr = length(x.r);
-dxl = x.l(end) - x.l(end-1);
-dxr = x.r(2) - x.r(1);
-
-Al = matGen(x.l);
-Ar = matGen(x.r);
-Al_off = sparse(nl, nr);
-Ar_off = sparse(nr, nl);
-
-% imposing equation (1)
-Al(nl, nl-1) = lambda_m/dxl;
-Al(nl, nl) = -1 - lambda_m/dxl;
-Al_off(nl, 1) = 1;
-
-% imposing equation (2')
-Ar_off(1, nl) = 1/dxl;
-Ar_off(1, nl-1) = -1/dxl;
-Ar(1, 1) = 1/dxr;
-Ar(1, 2) = -1/dxr;
-
-A = [[Al Al_off]; [Ar_off Ar]];
-
-% interpolate charge density on nodes
-f.l = cell2node(x.l, kappa^2*(cp.l - cm.l));
-f.r = cell2node(x.r, kappa^2*(cp.r - cm.r));
-
-% adjust boundary conditions
-f.l(1) = bc(1); f.l(end) = 0;
-f.r(end) = bc(end); f.r(1) = 0;
-
-sol = A \ [f.l; f.r];
-
-pn.l = sol(1:nl);
-pn.r = sol(nl+1:end);
-end
-
-function cn = cSolve(x, dt, psi, c, cn, z, G)
-% compute jmem -- only selective to cations.
-switch z
-    case 1
-        xcl = x.l(1:end-1) + 0.5*diff(x.l);
-        xcr = x.r(1:end-1) + 0.5*diff(x.r);
-        cl = interp1(xcl, c.l, 0, 'linear', 'extrap');
-        cr = interp1(xcr, c.r, 0, 'linear', 'extrap');
-        jmem = -G*(log(cr/cl) + (psi.r(1) - psi.l(end)));
-    case -1
-        jmem = 0;
-end
-
-% solve on either side using jmem as boundary condition
-cn.l = solveOneSide(x.l, dt, psi.l, c.l, cn.l, z, [0 jmem]);
-cn.r = solveOneSide(x.r, dt, psi.r, c.r, cn.r, z, [jmem 0]);
-
-% BAD IDEA; instead use a better time integrator!
-if any(cn.l <= 0) || any(cn.r <= 0)
-    error('Negative concentration -- try reducing dt');
-end
-
-    function cn = solveOneSide(x, dt, psi, c, cn, z, bc)
-        dx = diff(x);
-        f = getFlux(x, c, psi, z, 'harmonic');
-        f(1) = bc(1); f(end) = bc(end);
-        F = cn/dt - diff(f) ./ dx;
+    % prepare the grid
+    dx = struct('l', diff(x.l), 'r', diff(x.r));
+    xc.l = x.l(1:end-1) + 0.5*dx.l; 
+    xc.r = x.r(1:end-1) + 0.5*dx.r;    
+    sol.grid = struct('x', x, 'xc', xc, 'dx', dx);
         
-        % note: we are solving c on cell centers
-        xc = x(1:end-1) + 0.5*dx;
-        A = 1/dt*speye(length(xc)) + matGen(x, 'cell');
-        cn = A \ F;
+    % compute the initial conditions        
+    nl = length(x.l); nr = length(x.r);
+    c0 = zeros(nl+nr-2, length(ions));
+    p0 = zeros(nl+nr, 1);
+    for i = 1:length(ions)
+        c0(:, i) = ions{i}.c0*ones(nl+nr-2, 1);
     end
+    p0(1:nl) = linspace(-options.v, 0, nl);
+    p0(nl+1:end) = linspace(0, options.v, nr);
 
-    function f = getFlux(x, c, psi, z, varargin)
+    % integrate the PNP equations -- note that the PNP equations is a index-1
+    % DAE since the Poisson eqution does not involve time derivatives.
+    % Therefore we need to define the mass matrix
+    nc = nl+nr-2; np = nl+nr;
+    dofs = nc*length(ions) + np;
+    diag = ones(dofs, 1);
+    diag(end-np+1:end) = 0;        
+    mass = spdiags(diag, 0, dofs, dofs);
+    
+    % set the options for ODE solver and call it
+    opt = odeset('Mass', mass, 'OutputFcn', @PNPPrint, 'AbsTol', 1e-6, 'RelTol', 1e-3);
+    pnp = ode15s(@(t, y) PNPSystem(t, y, sol.grid, options, ions), ...
+        [0 options.tf], [reshape(c0, [], 1); p0], opt);
+    
+    % extract solutions
+    sol.t = pnp.x';
+    
+    sol.psi.l = pnp.y(end-np+1:end-nr, :);
+    sol.psi.r = pnp.y(end-nr+1:end, :);
+    
+    % membrane variables
+    sol.mem.dpsi = squeeze(sol.psi.r(1,:) - sol.psi.l(end,:));
+    sol.mem.dc = zeros(length(ions), length(sol.t));
+    sol.mem.j = zeros(length(ions), length(sol.t));
+    
+    cn = reshape(pnp.y(1:nc*length(ions), :), nc, length(ions), []);    
+    for i = 1:length(ions)
+        sol.ions{i}.c.l = cn(1:nl-1, i, :);
+        sol.ions{i}.c.r = cn(nl:nl+nr-2, i, :);
+        
+        % store membrane values for easy use        
+        cl = squeeze(interp1(sol.grid.xc.l, sol.ions{i}.c.l, 0, 'linear', 'extrap'))';
+        cr = squeeze(interp1(sol.grid.xc.r, sol.ions{i}.c.r, 0, 'linear', 'extrap'))';
+        sol.mem.dc(i,:) = cr - cl;
+        sol.mem.j(i,:) = -ions{i}.G*(sol.mem.dpsi + log(cr./cl));
+    end        
+end
+
+function r = PNPSystem(~, y, grid, options, ions)
+    % Compute the residual of the PNP equations. This is the fully implicit
+    % formulation. We store everything in a single vector which includes all
+    % ionic concentrations followed by the potential            
+    nl = length(grid.x.l);
+    nr = length(grid.x.r);
+    nc = nl+nr-2;
+    np = nl+nr;
+    
+    dc = zeros(nc, length(ions));
+    z = zeros(1, length(ions));
+    
+    psi = y(end-np+1:end);
+    c = reshape(y(1:nc*length(ions)), nc, length(ions));
+    
+    el = -grad(grid.x.l, psi(1:nl));
+    er = -grad(grid.x.r, psi(nl+1:end));
+    
+    for i = 1:length(ions)
+        z(i) = ions{i}.z;
+        fl = getFlux(grid.x.l, c(1:nl-1, i), el, ions{i}, 'linear');
+        fr = getFlux(grid.x.r, c(nl:end, i), er, ions{i}, 'linear');
+        
+        % compute membrane flux
+        cl = interp1(grid.xc.l, c(1:nl-1, i), 0, 'linear', 'extrap');
+        cr = interp1(grid.xc.r, c(nl:end, i), 0, 'linear', 'extrap');
+        jmem = -ions{i}.G*(psi(nl+1) - psi(nl) + log(cr/cl));
+        
+        % apply boundary conditions
+        fl(1) = 0; fl(end) = jmem;
+        fr(1) = jmem; fr(end) = 0;
+        
+        dc(:, i) = [-diff(fl)./grid.dx.l; -diff(fr)./grid.dx.r];
+    end
+    
+    % Poisson equation -- Note we impose constant potential boundary conditions
+    rhol = options.lambda^(-2)*cell2node(grid.x.l, sum(z.*c(1:nl-1,:), 2));
+    rhor = options.lambda^(-2)*cell2node(grid.x.r, sum(z.*c(nl:end,:), 2));    
+    dpsi = [laplace(grid.x.l, psi(1:nl)) + rhol; laplace(grid.x.r, psi(nl+1:end)) + rhor];
+    
+    % apply electrode boundary conditions
+    dpsi([1, end]) = [psi(1) + options.v; psi(end) - options.v];
+    
+    % apply membrane boundary conditions
+    dpsi(nl) = psi(nl+1) - psi(nl) - options.lambda_m*(psi(nl)-psi(nl-1))/grid.dx.l(end);
+    dpsi(nl+1) = (psi(nl+2) - psi(nl+1))/grid.dx.r(1) - (psi(nl) - psi(nl-1))/grid.dx.l(end);
+    
+    % pack everything
+    r = [reshape(dc, [], 1); dpsi];
+    
+    function f = getFlux(x, c, e, ion, varargin)
         if nargin < 5
             method = 'linear';
         else
             method = lower(varargin{1});
         end
         
-        e = -grad(x, psi);
-        f = z*e.*cell2node(x, c, method);
+        fd = -grad(x, c, 'cell');
+        fe = ion.z*e.*cell2node(x, c, method);
+        f = ion.d*(fd + fe);
     end
+end
+
+function status = PNPPrint(t, ~, flag)
+    % a print function to be called after each step of ode solver 
+    switch flag
+        case 'done'
+            fprintf('\n');
+        otherwise
+            fprintf('t = %f\n', t(1));
+    end
+    status = 0;
 end
