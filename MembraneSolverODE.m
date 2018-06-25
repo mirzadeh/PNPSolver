@@ -1,12 +1,10 @@
-function sol = MembraneSolverODE(x, options, varargin)
+function sol = MembraneSolverODE(x, options, ions)
     sol.options = options;
     
     % default to binary symmetric electrolyte if no ions are supplied
     if nargin < 3
-        ions{1} = struct('z',  1, 'c0', 0.5, 'd', 1, 'G', 1e-2);
+        ions{1} = struct('z',  1, 'c0', 0.5, 'd', 1, 'G', 1);
         ions{2} = struct('z', -1, 'c0', 0.5, 'd', 1, 'G', 0);
-    else
-        ions = varargin{1};
     end
     sol.ions = ions;
 
@@ -36,20 +34,32 @@ function sol = MembraneSolverODE(x, options, varargin)
     mass = spdiags(diag, 0, dofs, dofs);
     
     % set the options for ODE solver and call it
-    opt = odeset('Mass', mass, 'OutputFcn', @PNPPrint);
+    opt = odeset('Mass', mass, 'OutputFcn', @PNPPrint, 'AbsTol', 1e-6, 'RelTol', 1e-3);
     pnp = ode15s(@(t, y) PNPSystem(t, y, sol.grid, options, ions), ...
         [0 options.tf], [reshape(c0, [], 1); p0], opt);
     
     % extract solutions
-    sol.grid.t = pnp.x';
-    cn = reshape(pnp.y(1:nc*length(ions), :), nc, length(ions), []);
-    pn = pnp.y(end-np+1:end, :);
+    sol.t = pnp.x';
+    
+    sol.psi.l = pnp.y(end-np+1:end-nr, :);
+    sol.psi.r = pnp.y(end-nr+1:end, :);
+    
+    % membrane variables
+    sol.mem.dpsi = squeeze(sol.psi.r(1,:) - sol.psi.l(end,:));
+    sol.mem.dc = zeros(length(ions), length(sol.t));
+    sol.mem.j = zeros(length(ions), length(sol.t));
+    
+    cn = reshape(pnp.y(1:nc*length(ions), :), nc, length(ions), []);    
     for i = 1:length(ions)
-        sol.ions{i}.cl = cn(1:nl-1, i, :);
-        sol.ions{i}.cr = cn(nl:nl+nr-2, i, :);
-    end
-    sol.psil = pn(1:nl, :);
-    sol.psir = pn(nl+1:nl+nr, :);
+        sol.ions{i}.c.l = cn(1:nl-1, i, :);
+        sol.ions{i}.c.r = cn(nl:nl+nr-2, i, :);
+        
+        % store membrane values for easy use        
+        cl = squeeze(interp1(sol.grid.xc.l, sol.ions{i}.c.l, 0, 'linear', 'extrap'))';
+        cr = squeeze(interp1(sol.grid.xc.r, sol.ions{i}.c.r, 0, 'linear', 'extrap'))';
+        sol.mem.dc(i,:) = cr - cl;
+        sol.mem.j(i,:) = -ions{i}.G*(sol.mem.dpsi + log(cr./cl));
+    end        
 end
 
 function r = PNPSystem(~, y, grid, options, ions)
