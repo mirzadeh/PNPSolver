@@ -51,12 +51,12 @@ function sol = MembraneSolver(x, options, ions)
     
     cn = reshape(pnp.y(1:nc*length(ions), :), nc, length(ions), []);    
     for i = 1:length(ions)
-        sol.ions{i}.c.l = cn(1:nl-1, i, :);
-        sol.ions{i}.c.r = cn(nl:nl+nr-2, i, :);
+        sol.ions{i}.c.l = squeeze(cn(1:nl-1, i, :));
+        sol.ions{i}.c.r = squeeze(cn(nl:nl+nr-2, i, :));
         
         % store membrane values for easy use        
-        cl = squeeze(interp1(sol.grid.xc.l, sol.ions{i}.c.l, 0, 'linear', 'extrap'))';
-        cr = squeeze(interp1(sol.grid.xc.r, sol.ions{i}.c.r, 0, 'linear', 'extrap'))';
+        cl = squeeze(interp1(sol.grid.xc.l, sol.ions{i}.c.l, 0, 'linear', 'extrap'));
+        cr = squeeze(interp1(sol.grid.xc.r, sol.ions{i}.c.r, 0, 'linear', 'extrap'));
         sol.mem.dc(i,:) = cr - cl;
         sol.mem.j(i,:) = -ions{i}.G*(sol.mem.dpsi + log(cr./cl));
     end        
